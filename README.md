@@ -53,6 +53,12 @@ This is a systemd service, intended to be launched in the user's session (and us
 5. run `make install`
 6. start the service with `systemctl --user start hecaton`. To install it permanently, run `systemctl --user enable hecaton`.
 
+Alternatively, after step 3, just run it manually from the project directory. Use `nohup`, `disown` or a multiplexer like `screen` or `tmux` to keep it running after closing its terminal window.
+
+```shell
+$ inputplug/inputplug -d -c hecaton.py
+```
+
 # Usage
 
 Just connect an additional mouse/trackball/trackpad after the service is launched. After a brief moment, a new cursor should appear on your screen, and interacting with the newly connected device should move it. Your previous, main cursor will not be affected by this device.
