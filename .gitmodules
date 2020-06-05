@@ -1,0 +1,3 @@
+[submodule "inputplug"]
+	path = inputplug
+	url = git@github.com:andrewshadura/inputplug.git
