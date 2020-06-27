@@ -2,15 +2,20 @@ import sys
 
 from collections import Counter
 from pprint import pprint
-from time import localtime
+
 
 class InputEventHandler(object):
-    def __init__(self, xinput, quiet=False):
+    def __init__(self, xinput, config):
         self.xinput = xinput
-        self.quiet = quiet
+        self.config = config
+        # TODO: extract from config
+        self.quiet = False
 
     def noop(self, *args):
         pass
+
+    def invalidate(self, *args):
+        self.xinput.invalidate()
 
     def log_event(self, event, *args):
         if self.quiet:
@@ -18,7 +23,31 @@ class InputEventHandler(object):
         sys.stderr.write(f"{event}{args}\n")
 
     def listdevices(self, device_id):
-        pprint(self.xinput.devices())
+        pprint(self.xinput.device_list)
+
+    def find_master_for(self, device_id):
+        device = self.xinput[device_id]
+        for section in self.config.sections():
+            if section in ('Core', 'Disabled', 'General'):
+                continue
+            for pattern in self.config[section].keys():
+                if device.match(pattern):
+                    return section
+        return None
+
+    def find_or_create_master(self, name, kind):
+        # 1. If device list already contains a master with this name, return its id
+        for device in self.xinput.device_list:
+            if device.name == f"{name} {kind}" and device.role == 'master':
+                return device.id
+
+        # 2. None found. Create one, then return here and find it.
+        self.xinput.create_master(name)
+        return self.find_or_create_master(name, kind)
+
+    def disable(self, name):
+        # TODO: Look in config['Disabled'], match device.
+        return False
 
     def XIDeviceEnabled(self, device_id, input_class, device_name):
         if input_class in ('XIMasterPointer', 'XIMasterKeyboard'):
@@ -30,10 +59,17 @@ class InputEventHandler(object):
 
         self.log_event('XIDeviceEnabled', device_id, input_class, device_name)
 
-        new_master = self.time_based_master_name()
-        kind = 'pointer' if input_class == 'XISlavePointer' else 'keyboard'
+        if self.disable(device_id):
+            # TODO: issue an xinput command to disable. Or should this be on attach?
+            return
 
-        master_id = self.xinput.get_or_create_master(new_master, kind)
+        master_name = self.find_master_for(device_id)
+        if master_name is None:
+            # No rules for this device. Ignore.
+            return
+
+        kind = 'pointer' if input_class == 'XISlavePointer' else 'keyboard'
+        master_id = self.find_or_create_master(master_name, kind)
         self.xinput.attach(device_id, master_id)
 
     def XIDeviceDisabled(self, device_id, input_class, device_name):
@@ -64,17 +100,9 @@ class InputEventHandler(object):
 
             self.xinput.remove_master(master_id)
 
-    XISlaveRemoved = noop
-    XIMasterAdded = noop
-    XIMasterRemoved = noop
-    XISlaveAdded = noop
+    XISlaveRemoved = invalidate
+    XIMasterAdded = invalidate
+    XIMasterRemoved = invalidate
+    XISlaveAdded = invalidate
     XISlaveAttached = noop
     XISlaveDetached = noop
-
-    @staticmethod
-    def time_based_master_name(lag=2):
-        now = localtime()
-        # Returns the same value for `lag` consecutive minutes
-        minute = now.tm_min - now.tm_min % lag
-
-        return f"Hecaton Master {now.tm_hour:02}{minute:02}"

@@ -46,28 +46,24 @@ This is a systemd service, intended to be launched in the user's session (and us
 
 # Installation
 
-1. clone the repository
-2. run `git submodule init` then `git submodule update` to fetch inputplug
-3. run `make`
-4. if necessary, adjust installation paths in the Makefile. By default, both inputplug and the script are installed under user's home directory, so root access is never required.
-5. run `make install`
-6. start the service with `systemctl --user start hecaton`. To install it permanently, run `systemctl --user enable hecaton`.
+1. Clone the repository
+2. Run `git submodule init` then `git submodule update` to fetch inputplug. 
+3. Run `make`
+4. If necessary, adjust installation paths in the Makefile. By default, both inputplug and the script are installed under user's home directory, so root access is never required.
+5. Run `make install`
+6. Copy `hecaton.ini` to `$HOME/.config`, edit it. Input your device names or patterns into separate head sections.
+7. Start the service with `systemctl --user start hecaton`. To install it permanently, run `systemctl --user enable hecaton`.
 
-Alternatively, after step 3, just run it manually from the project directory. Use `nohup`, `disown` or a multiplexer like `screen` or `tmux` to keep it running after closing its terminal window.
+If your system already has `inputplug`, skip steps 2 and 3. Debian and Ubuntu systems ship it in a package of the same name.
+
+Alternatively, after step 3, just run it manually from the project directory. Edit the config file there directly. Use `nohup`, `disown` or a multiplexer like `screen` or `tmux` to keep it running after closing its terminal window.
 
 ```shell
-$ inputplug/inputplug -d -c hecaton.py
+$ inputplug/inputplug -d -0 -c hecaton.py
 ```
 
 # Usage
 
-Just connect an additional mouse/trackball/trackpad after the service is launched. After a brief moment, a new cursor should appear on your screen, and interacting with the newly connected device should move it. Your previous, main cursor will not be affected by this device.
+The config file should specify at least one section other than `Core`. In these sections, list device names or patterns. On connecting a matching device, a new master will be created, named like the section, and the device automatically reassigned to it. On disconnection, empty masters are cleaned up automatically.
 
-To create a pointer-keyboard pair, connect a keyboard as well. If more devices are connected within a short time window, they form a pair.
-
-## Pairing time window
-
-To keep the program simple, hecaton assigns new master pointers only if the last one was created longer than two minutes ago (configurable in the Python script). This means that to get a keyboard+pointer pair, you should connect both devices within about a minute of each other. Then wait for a minute before connecting more.
-
-This is because the two minutes are successive wall-clock minutes, not time since last connection. If a device was connected at, say, 10:30, then *all* devices (both pointing and keyboards) connected until 10:31:59 will be assigned to the same master pointer/keyboard pair. Devices connected at 10:32:00 or later will form new pairs.
-
+The number of heads is equal to the number of sections in config, excluding the General and Disabled sections. Since Core must always be present, this means that creating two new sections results in three cursor/focus pairs.

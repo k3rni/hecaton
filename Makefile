@@ -8,8 +8,8 @@ all:
 
 install:
 	mkdir -p $(BINDIR) $(LIBDIR) $(SERVICEDIR)
-	install inputplug/inputplug $(BINDIR)
-	install hecaton.py $(LIBDIR)
+	stat inputplug/inputplug && install inputplug/inputplug $(BINDIR)
+	install hecaton.py config.py xinput.py handler.py $(LIBDIR)
 	envsubst < hecaton.service > $(SERVICEDIR)/hecaton.service
 	systemctl --user daemon-reload
 	@echo "To start the service, run 'systemctl --user start hecaton'"

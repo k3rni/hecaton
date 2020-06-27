@@ -9,7 +9,7 @@ from typing import Optional
 
 
 def find_config() -> Optional[Path]:
-    config_dir = Path(getenv("XDG_CONFIG_DIR", "~/.config"))
+    config_dir = Path(getenv("XDG_CONFIG_DIR", Path.home() / ".config"))
     config_file = Path("hecaton.ini")
     candidates = [Path.cwd() / config_file,
                   config_dir / config_file]
@@ -45,7 +45,7 @@ def validate(config):
         if section == 'Core':
             core_present = True
 
-        for devname, _ in config[section].items():
+        for devname in config[section].keys():
             for pattern in usage:
                 if prefix_match(devname, pattern):
                     duplicate_devices.setdefault(devname, []).append(

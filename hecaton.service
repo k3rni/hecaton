@@ -3,7 +3,7 @@ Description=Auto-spawn additional mouse pointers for each connected device
 
 [Service]
 Type=simple
-ExecStart=$BINDIR/inputplug -d -c $LIBDIR/hecaton/hecaton.py
+ExecStart=$BINDIR/inputplug -d -0 -c $LIBDIR/hecaton.py
 
 [Install]
 WantedBy=graphical-session.target
