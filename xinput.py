@@ -1,33 +1,39 @@
 import pickle
 import re
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from itertools import groupby
 from os import readlink, environ
 from pathlib import Path
 from subprocess import run, check_output
+from typing import cast, Any, Dict, Iterable, List, Union
 
 __all__ = ["XInput"]
 
 
-def sysfsid(path):
+def sysfsid(path: Path) -> str:
     devpath = path.resolve().relative_to('/sys/devices')
 
     while True:
         devpath = devpath.parent
         if devpath.stem == 'input':
-            return devpath.parent
+            return str(devpath.parent)
 
-# for slave devices, rel is their master id
-# for master devices, rel is the other device in master pair
+
+PropsDict = Dict[Union[int, str], Any]
+
+
 @dataclass
 class XIDevice:
     name: str
     id: str
     role: str
     kind: str
-    properties: dict
+    # for slave devices, rel is their master id
+    # for master devices, rel is the other device in master pair
+    rel: str
+    properties: PropsDict = field(default_factory=dict)
 
     def __getitem__(self, key):
         return self.properties[key]
@@ -35,7 +41,7 @@ class XIDevice:
     def __setitem__(self, key, value):
         self.properties[key] = value
 
-    def load_system_info(self):
+    def load_system_info(self) -> None:
         try:
             node = self['Device Node']
             evdev = Path(node).stem
@@ -47,7 +53,7 @@ class XIDevice:
         target = Path(readlink(sys_path))
         self['sysfs'] = str(sysfsid(sys_path.parent / target))
 
-    def match(self, pattern):
+    def match(self, pattern: str) -> bool:
         if 'sysfs' in self.properties and fnmatch(self['sysfs'], pattern):
             return True
         # Device Node
@@ -60,7 +66,7 @@ class XIDevice:
         return fnmatch(self.name, pattern)
 
 
-# TODO: Detect floating devices
+# TODO: Detect floating devices.
 DEV_LINE = re.compile(r'''
    ^.*?          # eat characters at start of line
    \b(.*?)\s+    # until we hit a word boundary, which belongs to some device name
@@ -74,8 +80,7 @@ DEV_LINE = re.compile(r'''
 PROPS_DEVICE = re.compile(r"^Device '(.*)':$")
 PROPS_LINE = re.compile(r'\t(.*)\s\((\d+)\):\t(.*)$')
 
-
-def transform_property(value, num, key):
+def transform_property(value: Any, num: int, key: str) -> Any:
     parse = lambda x: x
     if 'Matrix' in key:
         parse = float
@@ -98,14 +103,14 @@ def transform_property(value, num, key):
     return parse(value)
 
 
-def parse_props(lines):
-    props = None
+def parse_props(lines) -> Iterable[PropsDict]:
+    props = cast(PropsDict, {})
     for line in lines:
         head = PROPS_DEVICE.match(line)
         if head:
             if props:
                 yield props
-            props = {'label': head.group(1)}
+            props = cast(PropsDict, {'label': head.group(1)})
             continue
 
         row = PROPS_LINE.match(line)
@@ -118,18 +123,19 @@ def parse_props(lines):
 
     yield props
 
+
 class XInput(object):
     def __init__(self, executable=None):
         self.executable = executable or '/usr/bin/xinput'
 
-    def cachefile(self):
+    def cachefile(self) -> Path:
         cachedir = environ.get('XDG_RUNTIME_DIR', '/tmp')
         return Path(cachedir) / 'hecaton_xinput_cache'
 
     # NOTE: this whole caching mechanism isn't very important, as the full xinput query
     # requires only two invocations of xinput. May not be as useful as originally thought.
     @property
-    def device_list(self):
+    def device_list(self) -> List[XIDevice]:
         cache = self.cachefile()
         if cache.exists():
             try:
@@ -142,12 +148,12 @@ class XInput(object):
         pickle.dump(self._device_list, cache.open('wb'))
         return self._device_list
 
-    def invalidate(self):
+    def invalidate(self) -> None:
         if self.cachefile().exists():
             # Python 3.8 has unlink(missing_ok=True)
             self.cachefile().unlink()
 
-    def fetch_device_list(self):
+    def fetch_device_list(self) -> List[XIDevice]:
         xinput_out = check_output(self.executable, encoding='utf-8')
 
         matches = [DEV_LINE.match(line) for line in xinput_out.splitlines()]
@@ -165,7 +171,7 @@ class XInput(object):
 
     def devices(self):
         keyfunc = lambda dev: dev.name  # noqa: E731
-        grouped = groupby(sorted(self.device_list(), key=keyfunc), keyfunc)
+        grouped = groupby(sorted(self.device_list, key=keyfunc), keyfunc)
         return {name: list(devices) for name, devices in grouped}
 
     def __getitem__(self, key: str):
@@ -186,24 +192,6 @@ class XInput(object):
 
     def attach(self, device_id, master_id):
         run([self.executable, "reattach", str(device_id), str(master_id)])
-
-    def get_master_id(self, name, kind):
-        try:
-            # Newly created masters get the device kind added to their name
-            candidates = self.devices()[f"{name} {kind}"]
-            device = next(dev for dev in candidates
-                          if dev.role == 'master' and dev.kind == kind)  # Role check somewhat redundant
-            return device.id
-        except (KeyError, StopIteration):
-            return None
-
-    def get_or_create_master(self, name, kind):
-        existing_id = self.get_master_id(name, kind)
-        if existing_id:
-            return existing_id
-
-        self.create_master(name)
-        return self.get_master_id(name, kind)
 
 
 if __name__ == "__main__":
